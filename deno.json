@@ -1,0 +1,12 @@
+{
+  "tasks": {
+    "dev": "deno run --watch main.ts",
+    "start": "deno run --allow-net --allow-env --allow-read --allow-write main.ts"
+  },
+  "imports": {
+    "@env": "https://deno.land/std@0.219.0/dotenv/mod.ts",
+    "@log": "https://deno.land/std@0.219.0/log/mod.ts",
+    "@mcp": "npm:@modelcontextprotocol/sdk",
+    "@zod": "npm:zod@^3.24.4"
+  }
+}
