@@ -1,183 +1,113 @@
-# LinkedIn Post Creator for Claude
+# LinkedIn MCP Server for Claude Desktop
 
-A Model Context Protocol (MCP) tool that allows Claude to create and schedule LinkedIn posts on your behalf.
+This MCP server allows Claude Desktop to create and schedule LinkedIn posts on your behalf. The server is built using Deno and implements the Model Context Protocol (MCP).
 
-## Overview
+## Features
 
-This tool enables Claude to post content to LinkedIn directly through a simple API. It uses the Model Context Protocol (MCP) to integrate with Claude Desktop, allowing for a seamless experience when you want to draft and publish LinkedIn content with AI assistance.
+- Create and publish LinkedIn posts immediately
+- Schedule LinkedIn posts for future publication
+- View pending scheduled posts
 
-Features:
-- Create LinkedIn posts with custom content
-- Schedule posts for future publication
-- Secure handling of LinkedIn API credentials
-- Debug mode for testing without posting to LinkedIn
+## Prerequisites
+
+- [Deno](https://deno.com/) 1.34.0 or higher
+- LinkedIn API credentials (API Key and User ID)
+- Claude Desktop
 
 ## Installation
 
-### Prerequisites
-
-- [Rust](https://www.rust-lang.org/tools/install) (1.76.0 or newer)
-- [Claude Desktop](https://claude.ai/desktop)
-- [LinkedIn Developer Account](https://www.linkedin.com/developers/) with API access
-
-### Setup
-
-1. Clone the repository:
-   ```bash
+1. Clone this repository:
+   ```
    git clone https://github.com/yourusername/linkedin-mcp-server.git
    cd linkedin-mcp-server
    ```
 
-2. Create an `.env` file with your LinkedIn credentials:
-   ```
-   LINKEDIN_ACCESS_TOKEN=your_access_token_here
-   LINKEDIN_PERSON_ID=your_linkedin_person_id
-   SERVER_ADDRESS=0.0.0.0:3500
-   LOG_LEVEL=info
-   DEBUG_MODE=true  # Set to false in production
-   ```
+2. Set up environment variables for your LinkedIn API credentials:
 
-3. Build the project:
+   **macOS/Linux:**
    ```bash
-   cargo build --release
+   export LINKEDIN_API_KEY="your-api-key-here"
+   export LINKEDIN_USER_ID="your-user-id-here"
    ```
 
-## Integrating with Claude Desktop
-
-To use this tool with Claude Desktop, you need to create a wrapper script and update Claude's `mcpServers.json` file.
-
-### Step 1: Create a Wrapper Script
-
-Create a file named `run_linkedin_server.sh` (Linux/macOS) or `run_linkedin_server.bat` (Windows):
-
-**For macOS/Linux:**
-```bash
-#!/bin/bash
-
-# Set environment variables explicitly
-export LINKEDIN_ACCESS_TOKEN="your_access_token_here"
-export LINKEDIN_PERSON_ID="your_linkedin_person_id"
-export SERVER_ADDRESS="0.0.0.0:3500"
-export LOG_LEVEL="info"
-export DEBUG_MODE="true"  # Set to false when ready for real posting
-
-# Change to the directory containing your Rust project
-cd /ABSOLUTE/PATH/TO/YOUR/linkedin-mcp-server
-
-# Run the project
-cargo run --release
-```
-
-Make it executable:
-```bash
-chmod +x run_linkedin_server.sh
-```
-
-**For Windows:**
-```batch
-@echo off
-rem Set environment variables explicitly
-set LINKEDIN_ACCESS_TOKEN=your_access_token_here
-set LINKEDIN_PERSON_ID=your_linkedin_person_id
-set SERVER_ADDRESS=0.0.0.0:3500
-set LOG_LEVEL=info
-set DEBUG_MODE=true
-
-cd /d C:\ABSOLUTE\PATH\TO\YOUR\linkedin-mcp-server
-cargo run --release
-```
-
-### Step 2: Configure Claude Desktop
-
-1. Locate the `mcpServers.json` file:
-   - On macOS: `~/Library/Application Support/Claude/mcpServers.json`
-   - On Windows: `%APPDATA%\Claude\mcpServers.json`
-   - On Linux: `~/.config/Claude/mcpServers.json`
-
-2. Edit the file to add your LinkedIn tool:
-
-```json
-{
-    "mcpServers": {
-        "linkedin_post": {
-            "command": "/ABSOLUTE/PATH/TO/YOUR/run_linkedin_server.sh",
-            "args": []
-        }
-    }
-}
-```
-
-If you already have other tools in this file, add your LinkedIn tool as an additional entry.
-
-3. Restart Claude Desktop
-
-## Using the Tool with Claude
-
-Once configured, you can use the tool in conversations with Claude:
-
-1. Start a new conversation in Claude Desktop
-2. Ask Claude to help you create a LinkedIn post:
-   ```
-   Can you draft a LinkedIn post about our new product launch and post it for me?
+   **Windows:**
+   ```cmd
+   set LINKEDIN_API_KEY=your-api-key-here
+   set LINKEDIN_USER_ID=your-user-id-here
    ```
 
-3. Claude will draft the post and use the tool to publish it to LinkedIn
-4. To schedule a post for the future, specify a time:
+## Usage with Claude Desktop
+
+1. Configure Claude Desktop to use this MCP server by editing the configuration file:
+
+   **macOS:**
    ```
-   Draft a LinkedIn post about our upcoming webinar and schedule it for next Monday at 9am.
+   ~/Library/Application Support/Claude/claude_desktop_config.json
    ```
 
-## Example Prompts
+   **Windows:**
+   ```
+   %APPDATA%\Claude\claude_desktop_config.json
+   ```
 
-- "Create a LinkedIn post announcing our new partnership with Acme Corp."
-- "Draft a professional LinkedIn update about my recent promotion to Director of Marketing."
-- "Help me write a LinkedIn post about our industry conference and schedule it for Tuesday next week."
-- "Create a LinkedIn post sharing our quarterly results."
+2. Add the following configuration to the file:
 
-## Troubleshooting
+   ```json
+   {
+     "mcpServers": {
+       "linkedin": {
+         "command": "deno",
+         "args": ["run", "--allow-env", "--allow-net", "/path/to/linkedin-mcp-server/main.ts"],
+         "env": {
+           "LINKEDIN_API_KEY": "your-api-key-here",
+           "LINKEDIN_USER_ID": "your-user-id-here"
+         }
+       }
+     }
+   }
+   ```
 
-### Tool Not Available in Claude
+   Replace `/path/to/linkedin-mcp-server/main.ts` with the absolute path to the `main.ts` file, and fill in your actual LinkedIn API credentials.
 
-- Make sure your server is configured correctly in `mcpServers.json`
-- Check that the paths in your wrapper script are correct
-- Restart Claude Desktop
-- Look for error messages in Claude's console
+3. Save the file and restart Claude Desktop.
 
-### Authentication Issues
+## Using the Tools in Claude
 
-- Verify your LinkedIn API credentials are correct
-- Ensure your access token has the appropriate permissions
-- Check that the environment variables are set correctly in your wrapper script
+Once configured, Claude will have access to the following tools:
 
-### Port Conflicts
+1. **post-to-linkedin**: Create and publish a post to LinkedIn immediately
+   - Parameters:
+     - `content.text`: The text content of the post
+     - `content.imageUrl` (optional): URL to an image to include with the post
 
-If you see an error like "Address already in use":
+2. **schedule-linkedin-post**: Schedule a post for future publication
+   - Parameters:
+     - `content.text`: The text content of the post
+     - `content.imageUrl` (optional): URL to an image to include with the post
+     - `schedule.scheduledTime`: ISO 8601 timestamp for when to post (e.g., "2023-12-15T14:30:00Z")
 
-1. Change the port in your wrapper script and server configuration
-2. Ensure no other instance of the server is running
-3. Check if another application is using the same port
+3. **get-scheduled-posts**: List all pending scheduled posts
 
-## Development
+Example prompts for Claude:
 
-### Debug Mode
+- "Post a quick update about our new product launch to LinkedIn."
+- "Schedule a LinkedIn post for next Monday at 9 AM about our quarterly results."
+- "Show me the list of LinkedIn posts I have scheduled."
 
-Set `DEBUG_MODE=true` in your environment variables to prevent actual posts to LinkedIn during testing.
+## LinkedIn API Integration
 
-### Logging
+This server currently includes mock implementations of the LinkedIn API calls. To integrate with the actual LinkedIn API:
 
-Adjust the `LOG_LEVEL` environment variable to control logging verbosity:
-- `trace`: Most detailed
-- `debug`: Development information
-- `info`: General information (default)
-- `warn`: Warnings only
-- `error`: Errors only
+1. Apply for API access on the [LinkedIn Developer Portal](https://developer.linkedin.com/)
+2. Replace the mock `postToLinkedIn` function in `main.ts` with actual API calls using the LinkedIn API SDK
+3. Implement proper error handling and rate limiting
+
+## Security Considerations
+
+- Store your LinkedIn API credentials securely
+- Review all posts before Claude submits them
+- Be cautious about granting access to post to your LinkedIn account
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## Acknowledgements
-
-- Built with Rust and the RMCP framework
-- Uses the LinkedIn API for post creation
-- Integrates with Claude AI through the Model Context Protocol
+MIT

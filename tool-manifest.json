@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "linkedin": {
+      "command": "deno",
+      "args": ["run", "--allow-env", "--allow-net", "/path/to/linkedin-mcp-server/main.ts"],
+      "env": {
+        "LINKEDIN_API_KEY": "your-api-key-here",
+        "LINKEDIN_USER_ID": "your-user-id-here"
+      }
+    }
+  }
+}

@@ -1,123 +1,132 @@
-// main.ts
-import { MCPServer, ToolCallResult, ToolRegistry } from "@mcp";
-import { load } from "@env";
-import { LinkedInClient } from "./linkedinClient.ts";
-import { LinkedInPostRequestSchema, LinkedInPostResponseSchema } from "./schemas.ts";
-import * as log from "@log";
-
-// Configure logging
-await log.setup({
-  handlers: {
-    console: new log.handlers.ConsoleHandler("DEBUG", {
-      formatter: (record) => {
-        const time = new Date().toISOString();
-        return `${time} [${record.levelName}] ${record.msg}`;
-      },
-    }),
-  },
-  loggers: {
-    default: {
-      level: "DEBUG",
-      handlers: ["console"],
-    },
-  },
-});
-
-const logger = log.getLogger();
-logger.info("Starting LinkedIn MCP server...");
+// main.ts - Enhanced LinkedIn MCP Server for Claude Desktop
+import { McpServer } from "npm:@modelcontextprotocol/sdk/server/mcp.js";
+import { StdioServerTransport } from "npm:@modelcontextprotocol/sdk/server/stdio.js";
+import { LinkedInAPI, PostContentSchema, ScheduleSchema } from "./linkedin_api.ts";
 
 // Load environment variables
-await load({ export: true });
+const LINKEDIN_API_KEY = Deno.env.get("LINKEDIN_API_KEY");
+const LINKEDIN_USER_ID = Deno.env.get("LINKEDIN_USER_ID");
 
-// Validate required environment variables
-const accessToken = Deno.env.get("LINKEDIN_ACCESS_TOKEN");
-const personId = Deno.env.get("LINKEDIN_PERSON_ID");
-const debugMode = Deno.env.get("DEBUG_MODE") === "true";
-
-if (!accessToken || !personId) {
-  logger.error("Missing required environment variables. Please set LINKEDIN_ACCESS_TOKEN and LINKEDIN_PERSON_ID.");
+if (!LINKEDIN_API_KEY || !LINKEDIN_USER_ID) {
+  console.error("Error: Required environment variables are missing.");
+  console.error("Please set LINKEDIN_API_KEY and LINKEDIN_USER_ID environment variables.");
   Deno.exit(1);
 }
 
-// Initialize LinkedIn Client
-const linkedInClient = new LinkedInClient({
-  accessToken,
-  personId,
-  debugMode,
+// Create LinkedIn API client
+const linkedinClient = new LinkedInAPI(LINKEDIN_API_KEY, LINKEDIN_USER_ID);
+
+// Create server instance
+const server = new McpServer({
+  name: "linkedin-mcp-server",
+  version: "1.0.0",
 });
-logger.info("LinkedIn client initialized successfully");
 
-// Create the tool registry
-const toolRegistry = new ToolRegistry();
+// Register tools
 
-// Register the createPost tool
-toolRegistry.registerTool({
-  name: "create_post",
-  description: "Create a LinkedIn post. Optionally schedule it for a future time.",
-  inputSchema: LinkedInPostRequestSchema,
-  handler: async (params): Promise<ToolCallResult> => {
+// Tool for creating a LinkedIn post immediately
+server.tool(
+  "post-to-linkedin",
+  "Create and publish a post to LinkedIn immediately",
+  {
+    content: PostContentSchema,
+  },
+  async ({ content }) => {
     try {
-      // Parse and validate input parameters
-      const validatedParams = LinkedInPostRequestSchema.parse(params);
-      logger.info(`Tool 'create_post' called with content: ${validatedParams.content}`);
-      
-      // Create LinkedIn post
-      const postId = await linkedInClient.createPost(
-        validatedParams.content, 
-        validatedParams.schedule_time
-      );
-      
-      // Create successful response
-      const response = LinkedInPostResponseSchema.parse({
-        success: true,
-        post_id: postId,
-        message: "Post created successfully"
-      });
-      
-      return { result: response };
-    } catch (error) {
-      // Handle validation errors
-      if (error.name === "ZodError") {
-        logger.error(`Validation error: ${JSON.stringify(error.errors)}`);
-        return {
-          error: {
-            code: "invalid_params",
-            message: `Parameter validation failed: ${error.message}`
-          }
-        };
-      }
-      
-      // Handle LinkedIn API errors
-      logger.error(`Error creating LinkedIn post: ${error.message}`);
+      const result = await linkedinClient.createPost(content);
       return {
-        error: {
-          code: "tool_execution_error",
-          message: `Failed to create post: ${error.message}`
-        }
+        content: [
+          {
+            type: "text",
+            text: `Successfully published LinkedIn post. ${result}`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error posting to LinkedIn: ${error.message}`,
+          },
+        ],
+        isError: true,
       };
     }
   }
-});
+);
 
-// Create the MCP server
-const server = new MCPServer({
-  toolRegistry,
-  instructions: "A server for creating LinkedIn posts",
-  protocolVersion: "2024-11-05"
-});
+// Tool for scheduling a LinkedIn post
+server.tool(
+  "schedule-linkedin-post",
+  "Schedule a post to LinkedIn for future publication",
+  {
+    content: PostContentSchema,
+    schedule: ScheduleSchema,
+  },
+  async ({ content, schedule }) => {
+    try {
+      const result = await linkedinClient.schedulePost(content, schedule);
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Successfully scheduled LinkedIn post. ${result}`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error scheduling LinkedIn post: ${error.message}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+);
 
-// Start the MCP server
-try {
-  // Use standard input/output for MCP communication
-  await server.listen(Deno.stdin, Deno.stdout);
-  logger.info("MCP server started and listening on stdin/stdout");
-  
-  // Handle graceful shutdown
-  Deno.addSignalListener("SIGINT", () => {
-    logger.info("Received termination signal, shutting down...");
-    Deno.exit(0);
-  });
-} catch (error) {
-  logger.error(`Error starting MCP server: ${error.message}`);
-  Deno.exit(1);
+// Tool for getting pending scheduled posts
+server.tool(
+  "get-scheduled-posts",
+  "Get a list of pending scheduled LinkedIn posts",
+  {},
+  async () => {
+    try {
+      const scheduledPosts = await linkedinClient.getScheduledPosts();
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Pending scheduled posts:\n\n${scheduledPosts}`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error fetching scheduled posts: ${error.message}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+);
+
+// Start the server
+async function main() {
+  const transport = new StdioServerTransport();
+  await server.connect(transport);
+  console.error("LinkedIn MCP Server started and connected to transport");
 }
+
+main().catch((error) => {
+  console.error("Error starting server:", error);
+  Deno.exit(1);
+});
