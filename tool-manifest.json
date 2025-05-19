@@ -2,10 +2,12 @@
   "mcpServers": {
     "linkedin": {
       "command": "deno",
-      "args": ["run", "--allow-env", "--allow-net", "/path/to/linkedin-mcp-server/main.ts"],
+      "args": ["run", "--allow-env", "--allow-net", "--allow-read", "--allow-write", "/path/to/linkedin-mcp-server/main.ts"],
       "env": {
-        "LINKEDIN_API_KEY": "your-api-key-here",
-        "LINKEDIN_USER_ID": "your-user-id-here"
+        "LINKEDIN_CLIENT_ID": "your_client_id_here",
+        "LINKEDIN_CLIENT_SECRET": "your_client_secret_here",
+        "LINKEDIN_USER_ID": "your_linkedin_user_id",
+        "MONGODB_URI": "mongodb://admin:password@localhost:27017/linkedin?authSource=admin"
       }
     }
   }
