@@ -1,7 +1,7 @@
 // db/models/scheduledPost.ts - Data model for scheduled LinkedIn posts
 import { ObjectId } from "https://deno.land/x/mongo@v0.32.0/mod.ts";
 import mongoClient from "../mongo.ts";
-import { PostContent } from "../../linkedin_api.ts";
+import { PostContent } from "../../services/linkedin_api.ts";
 
 // Interface representing a scheduled post document in MongoDB
 export interface ScheduledPostSchema {

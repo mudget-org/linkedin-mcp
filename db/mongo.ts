@@ -1,12 +1,17 @@
 // db/mongo.ts - MongoDB client and connection management
 import { MongoClient, Database } from "https://deno.land/x/mongo@v0.32.0/mod.ts";
 import { load } from "@env";
-import { setup, getLogger } from "@log";
+import { setup, getLogger, formatters } from "@log";
 
 // Configure logging
 setup({
   handlers: {
-    console: new ConsoleHandler("DEBUG"),
+    console: new ConsoleHandler("DEBUG", {
+      // Write to stderr instead of stdout
+      formatter: formatters.jsonFormatter,
+      // Disable colors to prevent formatting issues
+      useColors: false,
+    }),
   },
   loggers: {
     default: {
@@ -17,7 +22,7 @@ setup({
 });
 
 // Get logger
-const logger = getLogger();
+const logger = SimpleLogger;
 
 // Load environment variables
 await load({ export: true });
@@ -47,14 +52,14 @@ class MongoDBClient {
     
     try {
       logger.info(`Connecting to MongoDB at ${MONGODB_URI}`);
-      await this.#client.connect(MONGODB_URI);
+      await this.#client.connect(MONGODB_URI!);
       
       this.#db = this.#client.database("linkedin");
       this.#connected = true;
       
       logger.info("Successfully connected to MongoDB");
       return this.#db;
-    } catch (error) {
+    } catch (error: any) {
       logger.error(`Failed to connect to MongoDB: ${error.message}`);
       throw error;
     }
@@ -99,3 +104,4 @@ Deno.addSignalListener("SIGTERM", async () => {
 
 // Import missing types
 import { ConsoleHandler } from "@log";
+import { SimpleLogger } from "../utils/logger.ts";

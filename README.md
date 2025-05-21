@@ -1,10 +1,14 @@
-# LinkedIn MCP Server for Claude Desktop
+# LinkedIn MCP Server with 3-Legged OAuth
 
-This MCP server allows Claude Desktop to create and schedule LinkedIn posts on your behalf. The server is built using Deno and implements the Model Context Protocol (MCP) with MongoDB for scheduled post storage.
+This MCP server allows Claude Desktop to create and publish LinkedIn posts on your behalf using 3-legged OAuth authentication. This means the server will authenticate as you rather than using a system account.
 
 ## Features
 
+- Authenticate with LinkedIn using 3-legged OAuth
 - Create and publish LinkedIn posts immediately
+- Test LinkedIn API connection
+- Check authentication status
+- Simulation mode for testing without LinkedIn API access
 - Schedule LinkedIn posts for future publication
 - View pending scheduled posts
 - Delete scheduled posts
@@ -17,71 +21,77 @@ This MCP server allows Claude Desktop to create and schedule LinkedIn posts on y
 - LinkedIn API credentials (Client ID, Client Secret, and User ID)
 - Claude Desktop
 
-## LinkedIn API Setup
+## LinkedIn App Setup
 
-To use this server, you'll need LinkedIn API credentials:
+Before you can use this server, you need to create a LinkedIn application:
 
-1. Create a LinkedIn Developer Application:
-   - Go to the [LinkedIn Developer Portal](https://www.linkedin.com/developers/)
-   - Click "Create App"
-   - Fill in the required information about your app
-   - Under "Products", request access to "Share on LinkedIn" and "Sign In with LinkedIn"
-   - Once approved, note your Client ID and Client Secret
-
-2. Get your LinkedIn User ID:
-   - Your LinkedIn User ID is a numeric identifier
-   - You can find it in your LinkedIn profile URL or by using the LinkedIn API
-   - For example, if your profile URL is `https://www.linkedin.com/in/yourname/`, go to `https://www.linkedin.com/in/yourname/detail/contact-info/` and look for a section with your public profile URL that might show `https://www.linkedin.com/in/yourname-12345678`; the numeric part is your User ID
+1. Go to the [LinkedIn Developer Portal](https://www.linkedin.com/developers/apps)
+2. Click "Create App"
+3. Fill in the required information:
+   - App name: "Claude LinkedIn Integration" (or your preferred name)
+   - LinkedIn Page: Your LinkedIn page or your personal profile
+   - App Logo: Upload an image
+4. Under "Products", select "Sign In with LinkedIn" and "Share on LinkedIn API"
+5. Under "Auth" section:
+   - Add the redirect URL: `http://localhost:8000/oauth/callback`
+   - (Use the port you specified in the OAUTH_PORT environment variable)
+6. Note your Client ID and Client Secret
 
 ## Installation
 
-1. Clone this repository:
-   ```
-   git clone https://github.com/yourusername/linkedin-mcp-server.git
-   cd linkedin-mcp-server
-   ```
-
-2. Set up the `.env` file:
-   ```
-   cp .env.example .env
-   ```
-
-3. Edit the `.env` file with your LinkedIn API credentials and MongoDB connection details.
-
-## Running with Docker
-
-The easiest way to run the server is with Docker Compose:
+1. Clone this repository and set up your environment:
 
 ```bash
-docker-compose up
+git clone https://github.com/yourusername/linkedin-mcp-server.git
+cd linkedin-mcp-server
+cp .env.example .env
 ```
 
-This will start both the MongoDB container and the LinkedIn MCP server.
+2. Edit the `.env` file with your LinkedIn API credentials:
 
-## Running Manually
+```
+LINKEDIN_CLIENT_ID=your_client_id_here
+LINKEDIN_CLIENT_SECRET=your_client_secret_here
+LINKEDIN_USER_ID=your_user_id
+MONGODB_URI=mongodb://admin:password@localhost:27017/linkedin?authSource=admin
+OAUTH_PORT=8000
+USE_SIMULATION=false
+DEBUG=false
+```
 
-If you prefer to run the components separately:
+## Running the Server
 
-1. Start MongoDB:
-   ```bash
-   # If using a local MongoDB installation
-   mongod --auth
+To run the server with OAuth support:
 
-   # Or use Docker
-   docker run -d -p 27017:27017 -e MONGO_INITDB_ROOT_USERNAME=admin -e MONGO_INITDB_ROOT_PASSWORD=password --name mongo mongo:latest
-   ```
+```bash
+deno run --allow-net --allow-env --allow-read --allow-write main.ts
+```
 
-2. Run the server:
-   ```bash
-   deno task start
-   ```
-   
-   Or run manually:
-   ```bash
-   deno run --allow-net --allow-env --allow-read --allow-write main.ts
-   ```
+This will:
+1. Start the MCP server for Claude Desktop
+2. Start a web server on the port specified in `OAUTH_PORT` (default: 8000)
+3. Log instructions for authorizing with LinkedIn
 
-## Usage with Claude Desktop
+## Running MongoDB with Docker
+
+The easiest way to run the database is with Docker Compose:
+
+```bash
+docker-compose up -d
+```
+
+## Authentication Process
+
+When you first start the server, you'll need to authenticate with LinkedIn:
+
+1. Visit `http://localhost:8000/oauth/authorize` in your web browser
+2. Log in to LinkedIn if necessary
+3. Authorize the application to access your LinkedIn account
+4. You'll be redirected back to the local server, which will complete the authentication process
+
+After successful authentication, the server will save the access token to a file so you don't need to re-authenticate each time you start the server.
+
+## Claude Desktop Configuration
 
 1. Configure Claude Desktop to use this MCP server by editing the configuration file:
 
@@ -101,24 +111,51 @@ If you prefer to run the components separately:
    {
      "mcpServers": {
        "linkedin": {
-         "command": "deno",
-         "args": ["run", "--allow-env", "--allow-net", "--allow-read", "--allow-write", "/path/to/linkedin-mcp-server/main.ts"],
+         "command": "/path/to/deno",
+         "args": ["run", "--allow-env", "--allow-net", "--allow-read", "--allow-write", "/path/to/linkedin-mcp-server/main_oauth.ts"],
          "env": {
            "LINKEDIN_CLIENT_ID": "your_client_id_here",
            "LINKEDIN_CLIENT_SECRET": "your_client_secret_here",
-           "LINKEDIN_USER_ID": "your_linkedin_user_id",
-           "MONGODB_URI": "mongodb://admin:password@localhost:27017/linkedin?authSource=admin"
+           "LINKEDIN_USER_ID": "your_user_id",
+           "MONGODB_URI": "mongodb://admin:password@localhost:27017/linkedin?authSource=admin",
+           "NO_COLOR": "1",
+           "DENO_NO_COLOR": "1",
+           "OAUTH_PORT": "8000"
          }
        }
      }
    }
    ```
 
-   Replace `/path/to/linkedin-mcp-server/main.ts` with the absolute path to the `main.ts` file, and fill in your actual LinkedIn API credentials.
+   Replace `/path/to/deno` with the absolute path to your Deno executable and `/path/to/linkedin-mcp-server/main.ts` with the absolute path to the `main.ts` file.
 
 3. Save the file and restart Claude Desktop.
 
 ## Using the Tools in Claude
+
+Once configured, Claude will have access to the following tools:
+
+### 1. Get Authentication Status
+
+Use this tool to check if you're authenticated with LinkedIn:
+
+```
+get-auth-status
+```
+
+If you're not authenticated, Claude will provide a link to authenticate.
+
+### 2. Test LinkedIn Connection
+
+Use this tool to test the LinkedIn API connection:
+
+```
+test-linkedin-connection
+```
+
+This will verify that the authentication is working and that the server can connect to the LinkedIn API.
+
+### 3. Post to LinkedIn
 
 Once configured, Claude will have access to the following tools:
 
@@ -145,6 +182,8 @@ Once configured, Claude will have access to the following tools:
 
 Example prompts for Claude:
 
+- "Share this article on LinkedIn with my thoughts."
+- "Create a LinkedIn post announcing our quarterly results."
 - "Post a quick update about our new product launch to LinkedIn."
 - "Schedule a LinkedIn post for next Monday at 9 AM about our quarterly results."
 - "Show me the list of LinkedIn posts I have scheduled."
@@ -162,21 +201,60 @@ You can control the scheduler using the `control-scheduler` tool:
 - `status`: Get the current status of the scheduler
 - `process`: Manually process due posts immediately
 
-## Security Considerations
-
-- Store your LinkedIn API credentials securely
-- Review all posts before Claude submits them
-- Be cautious about granting access to post to your LinkedIn account
-- The Client Credentials flow used in this implementation grants access only to your own LinkedIn profile
 
 ## Troubleshooting
 
-If you encounter any issues:
+### Authentication Issues
 
-1. Check the server logs for error messages
-2. Verify your LinkedIn API credentials are correct
-3. Make sure your MongoDB connection is working
-4. Confirm that your LinkedIn application has the necessary permissions
+If you encounter authentication issues:
+
+1. Check if the OAuth server is running:
+   - Visit `http://localhost:8000/oauth/status` to see the current authentication status
+   - If the server isn't running, make sure the OAUTH_PORT is not being used by another application
+
+2. Re-authenticate:
+   - Visit `http://localhost:8000/oauth/authorize` to start a new authentication flow
+   - Check for any error messages in the browser or server logs
+
+3. Token issues:
+   - If you're getting token expired errors, delete the `token_storage.json` file and re-authenticate
+   - Make sure your LinkedIn app has the necessary permissions (r_liteprofile, r_emailaddress, w_member_social)
+
+### LinkedIn API Issues
+
+Common LinkedIn API errors:
+
+1. **403 Forbidden**: Your application may not have been approved for the Share API. LinkedIn requires app review for production use of the Share API. For development, you can use the app while in "Development" mode, but only authorized users (developers added to the app) can use it.
+
+2. **401 Unauthorized**: The access token may be invalid or expired. Re-authenticate using the `/oauth/authorize` endpoint.
+
+3. **400 Bad Request**: Check for formatting issues in your post content. LinkedIn has specific requirements for post content.
+
+### Simulation Mode
+
+If you're having trouble with the LinkedIn API or just want to test the MCP server, you can enable simulation mode by setting `USE_SIMULATION=true` in your `.env` file. This will simulate successful responses from the LinkedIn API without actually posting to LinkedIn.
+
+## Security Considerations
+
+- The access token is stored in a file called `token_storage.json`. Keep this file secure as it grants access to post on your LinkedIn account.
+- The OAuth server only binds to localhost, so it's not accessible from outside your machine.
+- Review all posts before Claude submits them to ensure they meet your standards.
+
+## Development
+
+To modify or extend this server:
+
+1. The server is built using Deno, which is a secure JavaScript/TypeScript runtime.
+2. Files are organized as follows:
+   - `main_oauth.ts`: Main MCP server with OAuth support
+   - `oauth_server.ts`: Web server for LinkedIn OAuth flow
+   - `linkedin_api_oauth.ts`: LinkedIn API client with 3-legged OAuth support
+   - `simple-logger.ts`: Simple logging utility
+
+To add new features:
+1. Modify the appropriate files
+2. Update the MCP server tools in `main_oauth.ts`
+3. Test with Claude Desktop
 
 ## License
 

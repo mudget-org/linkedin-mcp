@@ -1,9 +1,29 @@
 // services/scheduler.ts - Service for handling scheduled post publishing
-import { getLogger } from "@log";
-import { LinkedInAPI } from "../linkedin_api.ts";
+import { getLogger, setup, formatters, ConsoleHandler } from "@log";
+import { LinkedInAPI } from "./linkedin_api.ts";
+import { SimpleLogger } from "../utils/logger.ts";
+
+// Configure logging
+setup({
+  handlers: {
+    console: new ConsoleHandler("DEBUG", {
+      // Write to stderr instead of stdout
+      formatter: formatters.jsonFormatter,
+      // Disable colors to prevent formatting issues
+      useColors: false,
+    }),
+  },
+  loggers: {
+    default: {
+      level: "INFO",
+      handlers: ["console"],
+    },
+  },
+});
+
 
 // Get logger
-const logger = getLogger();
+const logger = SimpleLogger;
 
 export class SchedulerService {
   private linkedInApi: LinkedInAPI;

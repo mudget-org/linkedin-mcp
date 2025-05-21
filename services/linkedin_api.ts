@@ -1,11 +1,30 @@
 // linkedin_api.ts - Enhanced LinkedIn API Integration with MongoDB
 import { z } from "@zod";
-import { getLogger } from "@log";
-import { ScheduledPostModel } from "./db/models/scheduledPost.ts";
-import { ScheduledPostSchema } from "./db/models/scheaduledPosts.ts";
+import { getLogger, setup, formatters, ConsoleHandler } from "@log";
+import { ScheduledPostModel, ScheduledPostSchema } from "../db/models/scheduledPosts.ts";
+import { SimpleLogger } from "../utils/logger.ts";
+import { LinkedInOAuthProvider } from "./oauth.ts";
+
+setup({
+  handlers: {
+    console: new ConsoleHandler("DEBUG", {
+      // Write to stderr instead of stdout
+      formatter: formatters.jsonFormatter,
+      // Disable colors to prevent formatting issues
+      useColors: false,
+    }),
+  },
+  loggers: {
+    default: {
+      level: "INFO",
+      handlers: ["console"],
+    },
+  },
+});
+
 
 // Get logger
-const logger = getLogger();
+const logger = SimpleLogger;
 
 // Types for our LinkedIn API integration
 export const PostContentSchema = z.object({
@@ -22,62 +41,14 @@ export type Schedule = z.infer<typeof ScheduleSchema>;
 
 // Class for handling LinkedIn API integration with simplified auth
 export class LinkedInAPI {
-  private clientId: string;
-  private clientSecret: string;
+  private oauthProvider: LinkedInOAuthProvider;
   private userId: string;
-  private accessToken: string | null = null;
-  private tokenExpiresAt: number = 0;
   private baseUrl = "https://api.linkedin.com/v2";
 
-  constructor(clientId: string, clientSecret: string, userId: string) {
-    this.clientId = clientId;
-    this.clientSecret = clientSecret;
+  constructor(oauthProvider: LinkedInOAuthProvider, userId: string) {
     this.userId = userId;
+    this.oauthProvider = oauthProvider;
     logger.info(`LinkedIn API client initialized for user ID: ${userId}`);
-  }
-
-  /**
-   * Get access token using client credentials flow
-   * @returns Access token
-   */
-  private async getAccessToken(): Promise<string> {
-    // If we have a valid token, return it
-    if (this.accessToken && this.tokenExpiresAt > Date.now()) {
-      return this.accessToken;
-    }
-
-    logger.info("Getting new LinkedIn access token");
-    
-    try {
-      const response = await fetch("https://www.linkedin.com/oauth/v2/accessToken", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded"
-        },
-        body: new URLSearchParams({
-          grant_type: "client_credentials",
-          client_id: this.clientId,
-          client_secret: this.clientSecret
-        })
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`LinkedIn token error: ${response.status} ${errorText}`);
-      }
-
-      const data = await response.json();
-      
-      this.accessToken = data.access_token;
-      this.tokenExpiresAt = Date.now() + (data.expires_in * 1000);
-      
-      logger.info(`LinkedIn access token acquired, expires in ${data.expires_in} seconds`);
-      
-      return this.accessToken!;
-    } catch (error: any) {
-      logger.error(`Error getting LinkedIn access token: ${error.message}`);
-      throw error;
-    }
   }
 
   /**
@@ -87,13 +58,18 @@ export class LinkedInAPI {
    */
   async createPost(content: PostContent): Promise<string> {
     logger.info(`Creating LinkedIn post for user: ${this.userId}`);
+
+    const isAuthenticated = await this.oauthProvider.hasValidToken();
+    if (!isAuthenticated) {
+      throw new Error("Not authenticated with LinkedIn. Please authorize the application first.");
+    }
     
     try {
-      const accessToken = await this.getAccessToken();
+      const accessToken = await this.oauthProvider.getAccessToken();
       
       // Prepare post data
       const postData = {
-        author: `urn:li:person:${this.userId}`,
+        author: `urn:li:company:${this.userId}`,
         lifecycleState: "PUBLISHED",
         specificContent: {
           "com.linkedin.ugc.ShareContent": {
@@ -294,6 +270,96 @@ export class LinkedInAPI {
     } catch (error: any) {
       logger.error(`Error deleting scheduled post ${id}: ${error.message}`);
       throw error;
+    }
+  }
+
+  /**
+   * Test the LinkedIn API connection
+   * @returns Connection status information
+   */
+  async testConnection(): Promise<{ success: boolean; message: string; details?: any }> {
+    
+    try {
+      SimpleLogger.info("Testing LinkedIn API connection");
+      
+      // Check if we have valid authentication
+      const isAuthenticated = await this.oauthProvider.hasValidToken();
+      if (!isAuthenticated) {
+        return {
+          success: false,
+          message: "Not authenticated with LinkedIn. Please authorize the application.",
+          details: {
+            authUrl: "/oauth/authorize"
+          }
+        };
+      }
+      
+      // Try to get an access token
+      const accessToken = await this.oauthProvider.getAccessToken();
+      SimpleLogger.info("Successfully obtained access token");
+      
+      // Try to get user profile
+      const profileResponse = await fetch(`${this.baseUrl}/me`, {
+        headers: {
+          "Authorization": `Bearer ${accessToken}`
+        }
+      });
+      
+      if (!profileResponse.ok) {
+        const errorText = await profileResponse.text();
+        return {
+          success: false,
+          message: `Failed to retrieve profile: ${profileResponse.status} ${errorText}`,
+          details: {
+            status: profileResponse.status,
+            response: errorText
+          }
+        };
+      }
+      
+      const profile = await profileResponse.json();
+      
+      return {
+        success: true,
+        message: "Successfully connected to LinkedIn API",
+        details: {
+          userId: profile.id,
+          firstName: profile.localizedFirstName,
+          lastName: profile.localizedLastName
+        }
+      };
+    } catch (error: any) {
+      SimpleLogger.error(`LinkedIn API connection test failed: ${error.message}`);
+      
+      return {
+        success: false,
+        message: `Connection test failed: ${error.message}`
+      };
+    }
+  }
+
+  /**
+   * Get the authorization status
+   */
+  async getAuthStatus(): Promise<{
+    authenticated: boolean;
+    userId?: string;
+    expiresAt?: string;
+    authUrl?: string;
+  }> {
+    const isAuthenticated = await this.oauthProvider.hasValidToken();
+    
+    if (isAuthenticated) {
+      return {
+        authenticated: true,
+        userId: this.oauthProvider.tokenStorage.userId,
+        expiresAt: new Date(this.oauthProvider.tokenStorage.expiresAt).toISOString()
+      };
+    } else {
+      return {
+        authenticated: false,
+        authUrl: "/oauth/authorize"
+      };
     }
   }
 }
